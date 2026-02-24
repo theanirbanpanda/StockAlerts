@@ -1,0 +1,25 @@
+name: Stock Alerts
+
+on:
+  schedule:
+    - cron: "*/10 3-11 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  run-alerts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run alert script
+        run: python stock_alerts.py
