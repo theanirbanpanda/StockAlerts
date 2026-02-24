@@ -1,3 +1,4 @@
+print("=== STOCK ALERT SCRIPT STARTED ===")
 import os
 import requests
 import pandas as pd
