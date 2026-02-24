@@ -30,4 +30,4 @@ jobs:
 
       - name: Run alert script
         run: |
-          python StockAlerts/stock_alerts.py
+          python stock_alerts.py
