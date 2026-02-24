@@ -1,61 +1,87 @@
-print("=== STOCK ALERT SCRIPT STARTED ===")
 import os
 import requests
 import pandas as pd
 import yfinance as yf
+from datetime import datetime
 
-# --- ENV VARIABLES (FROM GITHUB SECRETS) ---
-TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
-SHEET_CSV_URL = os.environ["SHEET_CSV_URL"]
-SHEET_UPDATE_URL = os.environ["SHEET_UPDATE_URL"]
+print("=== RUNNING STOCK ALERTS SCRIPT ===")
 
-# --- TELEGRAM ---
+# --- ENV VARS ---
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+SHEET_CSV_URL = os.getenv("SHEET_CSV_URL")
+SHEET_UPDATE_URL = os.getenv("SHEET_UPDATE_URL")
+
+print("Loaded environment variables")
+print(f"BOT TOKEN exists? {'Yes' if TELEGRAM_BOT_TOKEN else 'No'}")
+print(f"CHAT ID exists? {'Yes' if TELEGRAM_CHAT_ID else 'No'}")
+
+# Send telegram
 def send_telegram(message: str):
+    print("Sending Telegram message...")
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message}
     r = requests.post(url, json=payload)
+    print("Telegram response code:", r.status_code)
     r.raise_for_status()
 
-# --- PRICE ---
+# Fetch price
 def get_current_price(symbol: str):
-    ticker = yf.Ticker(symbol)
-    data = ticker.history(period="1d", interval="1m")
-    if data.empty:
+    try:
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period="1d", interval="1m")
+        if data.empty:
+            return None
+        return float(data["Close"].iloc[-1])
+    except Exception as e:
+        print("Price fetch error:", str(e))
         return None
-    return float(data["Close"].iloc[-1])
 
-# --- SHEET UPDATE ---
+# Mark alerted
 def mark_alerted(symbol: str):
+    print("Marking alerted for:", symbol)
     payload = {"symbol": symbol}
     r = requests.post(SHEET_UPDATE_URL, json=payload)
-    r.raise_for_status()
+    print("Update response:", r.status_code)
 
-# --- MAIN ---
+# Main logic
 def main():
+    print("Reading sheet from:", SHEET_CSV_URL)
     df = pd.read_csv(SHEET_CSV_URL)
+    print("Sheet rows:", len(df))
 
     for _, row in df.iterrows():
         symbol = row["Symbol"]
-        buy_price = float(row["BuyPrice"])
-        alerted = str(row["Alerted"]).strip().upper()
+        try:
+            buy_price = float(row["BuyPrice"])
+            alerted = str(row["Alerted"]).strip().upper()
+        except Exception as e:
+            print(f"Skipping row due to format error: {row}", str(e))
+            continue
+
+        print(f"Checking {symbol} | Target buy: {buy_price} | Alerted: {alerted}")
 
         if alerted == "YES":
+            print("Already alerted — skipping")
             continue
 
         price = get_current_price(symbol)
         if price is None:
+            print("Could not fetch price for", symbol)
             continue
 
+        print(f"Current price for {symbol}: {price}")
+
         if price <= buy_price:
-            message = (
-                f"📉 BUY ALERT\n\n"
-                f"Stock: {symbol}\n"
+            alert_msg = (
+                f"📉 BUY ALERT — {symbol}\n"
                 f"Current Price: {price}\n"
-                f"Target Buy Price: {buy_price}"
+                f"Target Price: {buy_price}"
             )
-            send_telegram(message)
+            send_telegram(alert_msg)
             mark_alerted(symbol)
+        else:
+            print("Target not reached")
 
 if __name__ == "__main__":
     main()
